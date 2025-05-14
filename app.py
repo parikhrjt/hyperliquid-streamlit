@@ -6,7 +6,6 @@ import json
 import time
 import os
 import sys
-import concurrent.futures
 from datetime import datetime
 
 # Configure page
@@ -33,42 +32,16 @@ if not os.path.exists("streamlit_adapter.py"):
     with open("streamlit_adapter.py", "w") as f:
         f.write(ADAPTER_CODE)
 
-# Import our adapter first
+# Make IPython.display work in Streamlit
 try:
-    from streamlit_adapter import HTML, display
-    st.sidebar.success("Loaded IPython adapter")
-except Exception as e:
-    st.sidebar.error(f"Error loading adapter: {e}")
+    import IPython.display
+except ImportError:
+    sys.modules['IPython.display'] = type('', (), {})()
+    sys.modules['IPython.display'].HTML = lambda x: x
+    sys.modules['IPython.display'].display = lambda x: None
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
-
-# Debug/verbose logging option
-debug_mode = st.sidebar.checkbox("Debug Mode (Show Logs)", value=True)
-
-# Create a placeholder for logs if debug mode is enabled
-if debug_mode:
-    log_container = st.expander("Debug Logs", expanded=True)
-    
-    # Function to log messages in Streamlit
-    def log_message(message):
-        log_container.write(message)
-        
-    # Redirect stdout to our logging function
-    class StreamToSt:
-        def write(self, text):
-            log_message(text)
-            
-        def flush(self):
-            pass
-    
-    # Save original stdout
-    original_stdout = sys.stdout
-    sys.stdout = StreamToSt()
-else:
-    # Define a no-op log function
-    def log_message(message):
-        pass
 
 # Find CSV files in the directory
 csv_files = [f for f in os.listdir() if f.endswith('.csv')]
@@ -89,14 +62,6 @@ if csv_files:
         # Set up addresses for analysis
         if 'address' in df.columns:
             addresses = df['address'].tolist()
-            
-            # Batch size option (to prevent API rate limits)
-            batch_size = st.sidebar.slider("API Batch Size", 
-                                     min_value=5, 
-                                     max_value=50, 
-                                     value=20,
-                                     help="Number of addresses to process in each API batch")
-            
             st.sidebar.success(f"Ready to analyze {len(addresses)} addresses")
         else:
             st.sidebar.error("CSV does not have an 'address' column")
@@ -156,24 +121,12 @@ if st.button("Run Analysis"):
         
         # Run in try-except block to catch any errors
         try:
-            # Update progress
-            status_text.write("Fetching price data...")
-            progress_bar.progress(20)
-            
-            # Run the analysis with visible progress updates
-            status_text.write(f"Analyzing trading activity for {len(addresses)} addresses...")
+            # Run the analysis
             result_df = analyze_trader_activity()
-            
-            # Update progress
-            status_text.write("Processing results...")
-            progress_bar.progress(80)
             
             if result_df is not None and not result_df.empty:
                 # Format for display
                 display_df = format_for_display(result_df)
-                
-                # Update progress
-                progress_bar.progress(90)
                 
                 # Show summary stats
                 st.subheader("Analysis Results")
@@ -208,10 +161,6 @@ if st.button("Run Analysis"):
         except Exception as e:
             st.error(f"An error occurred during analysis: {e}")
             st.exception(e)  # This will show the full error traceback
-        
-        # Restore stdout if we redirected it
-        if debug_mode:
-            sys.stdout = original_stdout
 
 # Add an explanation at the bottom
 with st.expander("About this app"):
