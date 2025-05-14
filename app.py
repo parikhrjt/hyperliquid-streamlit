@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import requests
+import json
 import os
+from datetime import datetime
 
 # Page configuration
 st.set_page_config(page_title="Hyperliquid Trader Analysis", layout="wide")
@@ -52,13 +56,66 @@ if addresses:
     if len(addresses) > 5:
         st.write(f"... and {len(addresses)-5} more")
 
-# Add analysis button (without functionality yet)
+# Create global variable that will be used by hyperliquid_analysis.py
+# This is a bridge between the two files
+global tt
+tt = {"address": addresses}
+
+# Import analysis functions
+try:
+    from hyperliquid_analysis import get_price_data, analyze_trader_activity, format_for_display
+    st.sidebar.success("Analysis functions loaded successfully")
+    analysis_available = True
+except Exception as e:
+    st.sidebar.error(f"Error loading analysis functions: {e}")
+    analysis_available = False
+
+# Create data directory
+os.makedirs("hyperliquid_data", exist_ok=True)
+
+# Add analysis button with actual functionality
 if st.button("Run Analysis"):
-    st.info("Analysis feature will be added in the next step")
-    
-    # Show spinner to simulate work being done
-    with st.spinner("Simulating analysis..."):
-        import time
-        time.sleep(2)
-    
-    st.success("Basic UI is working correctly!")
+    if not analysis_available:
+        st.error("Analysis functions could not be loaded")
+    elif not addresses:
+        st.error("No addresses available for analysis")
+    else:
+        with st.spinner("Running Hyperliquid trader analysis..."):
+            try:
+                # Run the analysis
+                st.info(f"Analyzing trading activity for {len(addresses)} addresses...")
+                result_df = analyze_trader_activity()
+                
+                if result_df is not None and not result_df.empty:
+                    # Format for display
+                    display_df = format_for_display(result_df)
+                    
+                    # Show summary stats
+                    st.subheader("Analysis Results")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Total Assets Analyzed", len(display_df))
+                    with col2:
+                        total_volume = result_df['24h Volume'].sum() if '24h Volume' in result_df.columns else 0
+                        st.metric("Total 24h Volume", f"${total_volume/1000000:.2f}M")
+                    
+                    # Display the full table
+                    st.subheader("Trader Activity Analysis")
+                    st.dataframe(display_df)
+                    
+                    # Add download option
+                    csv = display_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        "Download CSV",
+                        csv,
+                        "hyperliquid_analysis.csv",
+                        "text/csv",
+                        key='download-csv'
+                    )
+                    
+                    st.success("Analysis completed successfully!")
+                else:
+                    st.warning("Analysis completed but no data was returned")
+            except Exception as e:
+                st.error(f"An error occurred during analysis: {e}")
+                st.exception(e)  # This will show the full error traceback
