@@ -8,22 +8,13 @@ from datetime import datetime, timedelta
 from IPython.display import HTML, display
 import random
 
-# Define the trader addresses from the CSV file
 try:
-    # Read addresses directly from the CSV file
-    csv_filename = "top traders  hyperdash hyperliquid  sample  big.csv"
-    addresses_df = pd.read_csv(csv_filename)
-    TRADER_ADDRESSES = addresses_df['address'].tolist()
-    print(f"Successfully loaded {len(TRADER_ADDRESSES)} trader addresses from {csv_filename}")
-    
-    # Limit to first 50 addresses to avoid API overload (optional, remove if you want all 525)
-    if len(TRADER_ADDRESSES) > 50:
-        TRADER_ADDRESSES = TRADER_ADDRESSES[:50]
-        print(f"Limited analysis to first {len(TRADER_ADDRESSES)} addresses to avoid API overload")
-except Exception as e:
-    # Fallback to a placeholder address for testing
+    # Try to access tt["address"] from the app.py global variable
+    TRADER_ADDRESSES = tt["address"]
+    print(f"Successfully loaded {len(TRADER_ADDRESSES)} trader addresses from global variable")
+except:
+    # If tt is not defined, use a placeholder address for testing
     TRADER_ADDRESSES = ["0xac50a255e330c388f44b9d01259d6b153a9f0ed9"]
-    print(f"Error loading addresses from CSV: {e}")
     print(f"Using test address: {TRADER_ADDRESSES[0]}")
 
 # Fallback prices if needed
