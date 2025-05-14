@@ -1,13 +1,70 @@
 import streamlit as st
+import pandas as pd
+import os
 
-# Simple app
+# Page configuration
+st.set_page_config(page_title="Hyperliquid Trader Analysis", layout="wide")
 st.title("Hyperliquid Trader Analysis")
-st.write("Initial setup successful!")
 
-# Show environment details
+# Sidebar configuration
 st.sidebar.header("Configuration")
-st.sidebar.info("App is running on Streamlit Cloud!")
 
-# Add a simple button
-if st.button("Click me to confirm the app is working"):
-    st.success("Success! The app is working correctly.")
+# Find CSV files in the directory
+csv_files = [f for f in os.listdir() if f.endswith('.csv')]
+
+if csv_files:
+    st.sidebar.success(f"Found {len(csv_files)} CSV files")
+    selected_csv = st.sidebar.selectbox("Select trader addresses file", csv_files)
+    
+    # Try to load and display the CSV
+    try:
+        df = pd.read_csv(selected_csv)
+        st.sidebar.write(f"Found {len(df)} addresses in file")
+        
+        # Display sample addresses
+        with st.expander("Preview of addresses"):
+            st.dataframe(df.head())
+            
+        # Option to limit addresses
+        limit = st.sidebar.slider("Limit number of addresses to analyze", 
+                                 min_value=1, 
+                                 max_value=min(len(df), 50), 
+                                 value=5)
+        
+        # Set up addresses for analysis
+        if 'address' in df.columns:
+            addresses = df['address'].head(limit).tolist()
+            st.sidebar.success(f"Using {len(addresses)} addresses")
+        else:
+            st.sidebar.error("CSV does not have an 'address' column")
+            addresses = []
+    except Exception as e:
+        st.sidebar.error(f"Error loading CSV: {e}")
+        addresses = []
+else:
+    st.sidebar.warning("No CSV files found")
+    
+    # Fallback to manual address input
+    default_address = "0xac50a255e330c388f44b9d01259d6b153a9f0ed9"
+    address_input = st.sidebar.text_area("Enter trader addresses (one per line)", default_address)
+    addresses = [addr.strip() for addr in address_input.split("\n") if addr.strip()]
+
+# Display the selected addresses
+st.write(f"Ready to analyze {len(addresses)} trader addresses")
+if addresses:
+    st.write("Addresses to analyze:")
+    for i, addr in enumerate(addresses[:5]):
+        st.write(f"{i+1}. {addr}")
+    if len(addresses) > 5:
+        st.write(f"... and {len(addresses)-5} more")
+
+# Add analysis button (without functionality yet)
+if st.button("Run Analysis"):
+    st.info("Analysis feature will be added in the next step")
+    
+    # Show spinner to simulate work being done
+    with st.spinner("Simulating analysis..."):
+        import time
+        time.sleep(2)
+    
+    st.success("Basic UI is working correctly!")
