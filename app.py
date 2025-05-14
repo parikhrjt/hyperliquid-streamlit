@@ -25,16 +25,10 @@ if csv_files:
         with st.expander("Preview of addresses"):
             st.dataframe(df.head())
             
-        # Option to limit addresses
-        limit = st.sidebar.slider("Limit number of addresses to analyze", 
-                                 min_value=1, 
-                                 max_value=min(len(df), 50), 
-                                 value=5)
-        
-        # Set up addresses for analysis
+        # Set up addresses for analysis - use all addresses
         if 'address' in df.columns:
-            addresses = df['address'].head(limit).tolist()
-            st.sidebar.success(f"Using {len(addresses)} addresses")
+            addresses = df['address'].tolist()
+            st.sidebar.success(f"Using all {len(addresses)} addresses")
         else:
             st.sidebar.error("CSV does not have an 'address' column")
             addresses = []
@@ -52,7 +46,7 @@ else:
 # Display the selected addresses
 st.write(f"Ready to analyze {len(addresses)} trader addresses")
 if addresses:
-    st.write("Addresses to analyze:")
+    st.write("Sample of addresses to analyze:")
     for i, addr in enumerate(addresses[:5]):
         st.write(f"{i+1}. {addr}")
     if len(addresses) > 5:
