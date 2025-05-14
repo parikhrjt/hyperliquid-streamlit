@@ -13,9 +13,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Make tt global variable accessible to other modules
-if 'tt' not in globals():
-    tt = {"address": []}
+# Define the tt variable correctly at the global scope
+tt = {"address": []}
 
 # Create adapter file first before anything else
 adapter_content = """
@@ -180,8 +179,7 @@ if addresses:
         if len(addresses) > 10:
             st.write(f"...and {len(addresses)-10} more")
 
-    # Important: Set both global tt and a file-based approach for accessing addresses
-    global tt
+    # Update the global tt variable with the addresses
     tt["address"] = addresses
     
     # Also create a file with addresses to make sure it's accessible
