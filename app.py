@@ -5,61 +5,101 @@ import requests
 import json
 import time
 import os
+import sys
 from datetime import datetime
 
-# Set page title
+# Set environment variable to avoid permission issues
+os.environ["STREAMLIT_HOME"] = os.path.join(os.getcwd(), ".streamlit")
+
+# Configure page
 st.set_page_config(page_title="Hyperliquid Trader Analysis", layout="wide")
 st.title("Hyperliquid Trader Analysis")
+
+# Debug information
+st.sidebar.write("Current working directory:", os.getcwd())
+st.sidebar.write("Files in directory:", os.listdir())
+
+# Get available CSV files
+csv_files = [f for f in os.listdir() if f.endswith('.csv')]
+st.sidebar.write("Available CSV files:", csv_files)
 
 # Sidebar for configuration
 st.sidebar.header("Configuration")
 
-# Check if CSV file exists and load it
-csv_file_path = "top traders hyperdash hyperliquid sample big.csv"
-use_csv = False
+# Default trader address
+default_trader = "0xac50a255e330c388f44b9d01259d6b153a9f0ed9"
 
-if os.path.exists(csv_file_path):
-    st.sidebar.success(f"Found traders CSV file: {csv_file_path}")
+# Check for CSV files
+if csv_files:
+    selected_csv = st.sidebar.selectbox("Select CSV file", csv_files)
     use_csv = st.sidebar.checkbox("Use traders from CSV file", value=True)
+    
+    if use_csv and selected_csv:
+        try:
+            addresses_df = pd.read_csv(selected_csv)
+            num_addresses = len(addresses_df)
+            st.sidebar.write(f"Found {num_addresses} addresses in {selected_csv}")
+            
+            # Select how many addresses to use
+            limit = st.sidebar.slider("Limit number of addresses to analyze", 
+                                     min_value=1, 
+                                     max_value=min(num_addresses, 100), 
+                                     value=min(20, num_addresses))
+            
+            # Create global variable for addresses that will be used by hyperliquid_analysis.py
+            if 'address' in addresses_df.columns:
+                # Take only the first 'limit' addresses
+                TRADER_ADDRESSES = addresses_df['address'].head(limit).tolist()
+                # Set global tt variable that the original code uses
+                global tt
+                tt = {"address": TRADER_ADDRESSES}
+                
+                st.sidebar.success(f"Using {len(TRADER_ADDRESSES)} addresses from CSV")
+                
+                # Show sample addresses
+                with st.sidebar.expander("Sample addresses"):
+                    for i, addr in enumerate(TRADER_ADDRESSES[:5]):
+                        st.write(f"{i+1}. {addr}")
+            else:
+                st.sidebar.error(f"CSV file doesn't have 'address' column. Columns found: {addresses_df.columns.tolist()}")
+                use_csv = False
+        except Exception as e:
+            st.sidebar.error(f"Error reading CSV: {e}")
+            use_csv = False
 else:
-    st.sidebar.warning(f"CSV file not found: {csv_file_path}")
     use_csv = False
+    st.sidebar.warning("No CSV files found. Enter addresses manually.")
 
-# Only show manual input if not using CSV
+# If not using CSV, get manual input
 if not use_csv:
-    # Input for trader addresses
-    default_trader = "0xac50a255e330c388f44b9d01259d6b153a9f0ed9"
     trader_input = st.sidebar.text_area("Trader Addresses (one per line)", default_trader)
     TRADER_ADDRESSES = [addr.strip() for addr in trader_input.split("\n") if addr.strip()]
-else:
-    try:
-        # Just to show the user
-        addresses_df = pd.read_csv(csv_file_path)
-        num_addresses = len(addresses_df)
-        limit = st.sidebar.slider("Limit number of addresses to analyze", 
-                                  min_value=1, 
-                                  max_value=min(num_addresses, 100), 
-                                  value=min(50, num_addresses))
-        st.sidebar.info(f"Using {limit} addresses from CSV file (out of {num_addresses} total)")
-        
-        # Display sample of addresses
-        with st.sidebar.expander("View sample addresses"):
-            st.dataframe(addresses_df.head(5))
-    except Exception as e:
-        st.sidebar.error(f"Error reading CSV: {e}")
+    # Set global tt variable that the original code uses
+    global tt
+    tt = {"address": TRADER_ADDRESSES}
 
-# Import the functions from your analysis file (do this after setting global variables)
-from hyperliquid_analysis import analyze_trader_activity, format_for_display, format_currency
+# Import the analysis functions
+try:
+    from hyperliquid_analysis import analyze_trader_activity, format_for_display, format_currency
+    st.sidebar.success("Successfully imported analysis functions")
+except Exception as e:
+    st.error(f"Error importing analysis functions: {e}")
+    st.stop()
+
+# Create directories with error handling
+try:
+    os.makedirs("hyperliquid_data", exist_ok=True)
+    st.sidebar.success("Created data directory")
+except Exception as e:
+    st.sidebar.warning(f"Could not create data directory: {e}")
 
 # Run analysis button
 if st.sidebar.button("Run Analysis"):
     with st.spinner("Analyzing trader data..."):
         try:
-            # Create data directory if it doesn't exist
-            os.makedirs("hyperliquid_data", exist_ok=True)
+            st.info(f"Analyzing {len(TRADER_ADDRESSES)} trader addresses...")
             
-            # Run the analysis (no need to pass TRADER_ADDRESSES, it will use the CSV)
-            st.info("Fetching and analyzing trader data...")
+            # Run the analysis
             result_df = analyze_trader_activity()
             
             if result_df is not None and not result_df.empty:
@@ -93,7 +133,7 @@ if st.sidebar.button("Run Analysis"):
                 st.error("No data available to display")
         except Exception as e:
             st.error(f"An error occurred: {e}")
-            st.error("Check the logs for more details")
+            st.exception(e)  # This will show the full traceback
 else:
     st.info("Click 'Run Analysis' to fetch the latest trading data.")
 
@@ -101,6 +141,6 @@ else:
 with st.expander("About this app"):
     st.write("""
     This app analyzes top trader activity on Hyperliquid using the official API.
-    It reads trader addresses from the CSV file or you can enter them manually.
+    It reads trader addresses from a CSV file or you can enter them manually.
     Click 'Run Analysis' to start the process.
     """)
