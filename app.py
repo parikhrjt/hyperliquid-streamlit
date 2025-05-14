@@ -13,6 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Make tt global variable accessible to other modules
+if 'tt' not in globals():
+    tt = {"address": []}
+
 # Create adapter file first before anything else
 adapter_content = """
 import streamlit as st
@@ -176,12 +180,20 @@ if addresses:
         if len(addresses) > 10:
             st.write(f"...and {len(addresses)-10} more")
 
-    # Important: Set global variable for hyperliquid_analysis.py
+    # Important: Set both global tt and a file-based approach for accessing addresses
     global tt
-    tt = {"address": addresses}
+    tt["address"] = addresses
+    
+    # Also create a file with addresses to make sure it's accessible
+    with open("addresses.txt", "w") as f:
+        for addr in addresses:
+            f.write(addr + "\n")
     
     # Show what was set
     st.write(f"Analysis will run on {len(tt['address'])} addresses")
+    
+    # Debug - Show content of tt
+    st.sidebar.write(f"Debug: Global tt has {len(tt['address'])} addresses")
 
     # Run analysis button
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
@@ -196,8 +208,18 @@ if addresses:
                 progress_container = st.empty()
                 progress_container.info("Importing analysis module...")
                 
-                # Import hyperliquid_analysis here to ensure tt is set
+                # Create a context file to pass addresses to the analysis module
+                with open("trader_addresses.txt", "w") as f:
+                    for addr in addresses:
+                        f.write(addr + "\n")
+                
+                progress_container.info(f"Set up {len(addresses)} addresses for analysis...")
+                
+                # Import hyperliquid_analysis here 
                 import hyperliquid_analysis
+                
+                # Explicitly set addresses in the module
+                hyperliquid_analysis.TRADER_ADDRESSES = addresses
                 
                 progress_container.info("Fetching price data...")
                 
