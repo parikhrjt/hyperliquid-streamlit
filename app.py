@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import traceback
+import glob
 
 # Set page config
 st.set_page_config(
@@ -52,61 +53,135 @@ This app analyzes trading activity for specified wallet addresses on Hyperliquid
 - Price changes
 """)
 
-# Sidebar
+# Debug information
 st.sidebar.header("Configuration")
 st.sidebar.info("App is running on Streamlit Cloud!")
 
+# Show current directory files
+with st.sidebar.expander("Debug: Show Files in Directory"):
+    files = glob.glob("*.*")
+    st.write("Files in current directory:")
+    for file in files:
+        st.write(f"- {file}")
+
 # Input methods
-input_method = st.sidebar.radio(
+input_method = st.radio(
     "Select input method",
-    ["Upload CSV", "Use sample addresses", "Enter addresses manually"]
+    ["CSV in Directory", "Upload CSV", "Enter addresses manually", "Use sample addresses"]
 )
 
 addresses = []
 
-if input_method == "Upload CSV":
-    uploaded_file = st.sidebar.file_uploader("Upload CSV with addresses", type=["csv"])
+if input_method == "CSV in Directory":
+    # Find existing CSV files
+    csv_files = glob.glob("*.csv")
+    
+    if not csv_files:
+        st.error("No CSV files found in the current directory.")
+    else:
+        selected_file = st.selectbox("Select a CSV file", csv_files)
+        
+        try:
+            # Display content of file for debugging
+            with open(selected_file, 'r') as f:
+                sample_content = f.read(1000)  # Read first 1000 chars
+            
+            st.expander("Preview file content").code(sample_content)
+            
+            # Read the file
+            df = pd.read_csv(selected_file)
+            
+            # Show column names
+            st.write(f"Columns in file: {', '.join(df.columns.tolist())}")
+            
+            # Check for address column
+            if 'address' not in df.columns:
+                st.error(f"The CSV file '{selected_file}' does not have an 'address' column.")
+                possible_columns = [col for col in df.columns if 'addr' in col.lower()]
+                
+                if possible_columns:
+                    st.warning(f"Found similar columns: {', '.join(possible_columns)}")
+                    selected_column = st.selectbox("Select column to use as address", possible_columns)
+                    if st.button("Use selected column"):
+                        addresses = df[selected_column].tolist()
+                        st.success(f"Loaded {len(addresses)} addresses from column '{selected_column}'")
+            else:
+                addresses = df['address'].tolist()
+                st.success(f"Loaded {len(addresses)} addresses from file '{selected_file}'")
+                
+        except Exception as e:
+            st.error(f"Error reading CSV: {str(e)}")
+            st.code(traceback.format_exc())
+
+elif input_method == "Upload CSV":
+    uploaded_file = st.file_uploader("Upload CSV with addresses", type=["csv"])
     
     if uploaded_file is not None:
         try:
+            # Display preview of uploaded content
+            content = uploaded_file.getvalue().decode('utf-8')
+            st.expander("Preview file content").code(content[:1000])  # Show first 1000 chars
+            
+            # Reset file position
+            uploaded_file.seek(0)
+            
+            # Read the file
             df = pd.read_csv(uploaded_file)
             
+            # Show column names
+            st.write(f"Columns in file: {', '.join(df.columns.tolist())}")
+            
+            # Check for address column
             if 'address' not in df.columns:
-                st.sidebar.error("CSV file must have an 'address' column")
+                st.error("The CSV file does not have an 'address' column.")
+                possible_columns = [col for col in df.columns if 'addr' in col.lower()]
+                
+                if possible_columns:
+                    st.warning(f"Found similar columns: {', '.join(possible_columns)}")
+                    selected_column = st.selectbox("Select column to use as address", possible_columns)
+                    if st.button("Use selected column"):
+                        addresses = df[selected_column].tolist()
+                        st.success(f"Loaded {len(addresses)} addresses from column '{selected_column}'")
             else:
                 addresses = df['address'].tolist()
-                st.sidebar.success(f"Found {len(addresses)} addresses")
+                st.success(f"Loaded {len(addresses)} addresses from uploaded file")
+                
         except Exception as e:
-            st.sidebar.error(f"Error reading CSV: {str(e)}")
+            st.error(f"Error reading CSV: {str(e)}")
+            st.code(traceback.format_exc())
 
-elif input_method == "Use sample addresses":
-    # Add some sample addresses (replace with actual sample addresses)
-    addresses = [
-        "0xac50a255e330c388f44b9d01259d6b153a9f0ed9",
-        # Add more sample addresses if needed
-    ]
-    st.sidebar.success(f"Using {len(addresses)} sample addresses")
-
-else:  # Manual entry
-    manual_addresses = st.sidebar.text_area(
+elif input_method == "Enter addresses manually":
+    manual_addresses = st.text_area(
         "Enter addresses (one per line)",
         "0xac50a255e330c388f44b9d01259d6b153a9f0ed9"
     )
     if manual_addresses:
         addresses = [addr.strip() for addr in manual_addresses.split('\n') if addr.strip()]
-        st.sidebar.success(f"Using {len(addresses)} manually entered addresses")
+        st.success(f"Using {len(addresses)} manually entered addresses")
+
+else:  # Use sample addresses
+    # Add some sample addresses
+    addresses = [
+        "0xac50a255e330c388f44b9d01259d6b153a9f0ed9",
+        "0x7ad5ebad9f38eb0859a61b030fe0e462944a50f3",
+        "0x38de9e2a992a12bdc566fca8162aeaca749b49d5"
+    ]
+    st.success(f"Using {len(addresses)} sample addresses")
 
 # Show sample of addresses
 if addresses:
-    with st.sidebar.expander(f"Showing {min(5, len(addresses))} of {len(addresses)} addresses"):
-        for i, addr in enumerate(addresses[:5]):
+    with st.expander(f"Showing addresses ({len(addresses)} total)"):
+        for i, addr in enumerate(addresses[:10]):  # Show first 10
             st.write(f"{i+1}. `{addr}`")
-        if len(addresses) > 5:
-            st.write(f"...and {len(addresses)-5} more")
+        if len(addresses) > 10:
+            st.write(f"...and {len(addresses)-10} more")
 
-    # Set global variable for hyperliquid_analysis.py
+    # Important: Set global variable for hyperliquid_analysis.py
     global tt
     tt = {"address": addresses}
+    
+    # Show what was set
+    st.write(f"Analysis will run on {len(tt['address'])} addresses")
 
     # Run analysis button
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
@@ -216,8 +291,8 @@ if addresses:
                 st.error(f"❌ Error during analysis: {str(e)}")
                 st.code(traceback.format_exc())
 else:
-    st.info("Please select addresses using one of the input methods in the sidebar.")
+    st.info("Please select addresses using one of the input methods above.")
 
-# Add some extra information at the bottom
+# Add extra information at the bottom
 st.sidebar.markdown("---")
 st.sidebar.write("Made with ❤️ using Streamlit")
