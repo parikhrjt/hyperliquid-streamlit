@@ -6,6 +6,7 @@ import json
 import time
 import os
 import sys
+import concurrent.futures
 from datetime import datetime
 
 # Configure page
@@ -37,13 +38,13 @@ try:
     from streamlit_adapter import HTML, display
     st.sidebar.success("Loaded IPython adapter")
 except Exception as e:
-    st.sidebar.warning(f"Error loading adapter: {e}")
+    st.sidebar.error(f"Error loading adapter: {e}")
 
 # Sidebar configuration
 st.sidebar.header("Configuration")
 
 # Debug/verbose logging option
-debug_mode = st.sidebar.checkbox("Debug Mode (Show Logs)", value=False)
+debug_mode = st.sidebar.checkbox("Debug Mode (Show Logs)", value=True)
 
 # Create a placeholder for logs if debug mode is enabled
 if debug_mode:
@@ -89,16 +90,14 @@ if csv_files:
         if 'address' in df.columns:
             addresses = df['address'].tolist()
             
-            # Add option to limit addresses for testing
-            if st.sidebar.checkbox("Limit addresses (for testing)", value=False):
-                limit = st.sidebar.slider("Number of addresses to analyze", 
-                                     min_value=1, 
-                                     max_value=len(addresses), 
-                                     value=10)
-                addresses = addresses[:limit]
-                st.sidebar.info(f"Using limited set of {len(addresses)} addresses")
-            else:
-                st.sidebar.success(f"Using all {len(addresses)} addresses")
+            # Batch size option (to prevent API rate limits)
+            batch_size = st.sidebar.slider("API Batch Size", 
+                                     min_value=5, 
+                                     max_value=50, 
+                                     value=20,
+                                     help="Number of addresses to process in each API batch")
+            
+            st.sidebar.success(f"Ready to analyze {len(addresses)} addresses")
         else:
             st.sidebar.error("CSV does not have an 'address' column")
             addresses = []
@@ -205,7 +204,7 @@ if st.button("Run Analysis"):
                 progress_bar.progress(100)
                 status_text.write("Analysis completed successfully!")
             else:
-                st.warning("Analysis completed but no data was returned")
+                st.error("Analysis completed but no data was returned")
         except Exception as e:
             st.error(f"An error occurred during analysis: {e}")
             st.exception(e)  # This will show the full error traceback
