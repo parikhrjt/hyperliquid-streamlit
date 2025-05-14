@@ -5,17 +5,28 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
-from IPython.display import HTML, display
 import random
 
+# Import our adapter for IPython display
 try:
-    # Try to access tt["address"] from the app.py global variable
-    TRADER_ADDRESSES = tt["address"]
-    print(f"Successfully loaded {len(TRADER_ADDRESSES)} trader addresses from global variable")
-except:
-    # If tt is not defined, use a placeholder address for testing
-    TRADER_ADDRESSES = ["0xac50a255e330c388f44b9d01259d6b153a9f0ed9"]
-    print(f"Using test address: {TRADER_ADDRESSES[0]}")
+    from IPython.display import HTML, display
+except ImportError:
+    from streamlit_adapter import HTML, display
+
+# Define the trader addresses
+def get_trader_addresses():
+    try:
+        # Try to access tt["address"] 
+        global tt  # Reference the global variable
+        addresses = tt["address"]
+        print(f"Successfully loaded {len(addresses)} trader addresses")
+        return addresses
+    except Exception as e:
+        # If tt is not defined, use a placeholder address for testing
+        print(f"Error accessing addresses: {e}")
+        addresses = ["0xac50a255e330c388f44b9d01259d6b153a9f0ed9"]
+        print(f"Using test address: {addresses[0]}")
+        return addresses
 
 # Fallback prices if needed
 DEFAULT_PRICES = {
@@ -172,6 +183,9 @@ def calculate_price_change(current, previous):
 
 def analyze_trader_activity():
     """Main function to analyze trader activity based on fills data"""
+    # Get trader addresses
+    TRADER_ADDRESSES = get_trader_addresses()
+    
     # Calculate cutoff time for 24h window
     now = datetime.now()
     cutoff_times = {
@@ -205,7 +219,10 @@ def analyze_trader_activity():
     # Step 2: Fetch and process fills for each address
     all_fills = []
     
-    for address in TRADER_ADDRESSES:
+    total_addresses = len(TRADER_ADDRESSES)
+    for i, address in enumerate(TRADER_ADDRESSES):
+        print(f"Processing address {i+1}/{total_addresses}: {address[:10]}...")
+        
         # Fetch all fills for this address
         fills = get_user_fills(address)
         
@@ -215,6 +232,10 @@ def analyze_trader_activity():
         
         # Add to all fills
         all_fills.extend(fills)
+        
+        # Add a slight delay to avoid rate limits
+        if i % 10 == 0 and i > 0:
+            time.sleep(1)
     
     # Step 3: Filter only fills from the last 24 hours
     last_24h_cutoff = cutoff_timestamps['24h']
@@ -304,6 +325,8 @@ def analyze_trader_activity():
     all_coins = set()
     for data in time_windows.values():
         all_coins.update(data['volumes'].keys())
+    
+    print(f"Found activity for {len(all_coins)} coins")
     
     for coin in all_coins:
         # Skip coins with no data
@@ -446,6 +469,7 @@ def analyze_trader_activity():
     # Save the summary data to file
     save_to_file(summary_data, "trading_summary")
     
+    print(f"Analysis complete: Found {len(df)} assets with trading activity")
     return df
 
 def format_currency(value):
@@ -659,10 +683,9 @@ def run_analysis():
         # Try to create data directory, but continue if it fails
         data_dir = "hyperliquid_data"
         os.makedirs(data_dir, exist_ok=True)
-        os.chdir(data_dir)
-        print(f"Saving data to {os.path.abspath(data_dir)}")
-    except:
-        print("Working in current directory")
+        print(f"Created data directory: {data_dir}")
+    except Exception as e:
+        print(f"Error creating data directory: {e}")
     
     # Analyze trader activity
     result_df = analyze_trader_activity()
