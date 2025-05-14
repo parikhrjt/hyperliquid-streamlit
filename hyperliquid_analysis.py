@@ -206,22 +206,7 @@ def analyze_trader_activity():
     # Step 2: Fetch and process fills for each address
     all_fills = []
     
-    # Add progress indicator for Streamlit
-    try:
-        import streamlit as st
-        progress_bar = st.progress(0)
-        progress_text = st.empty()
-    except:
-        progress_bar = None
-        progress_text = None
-    
-    total_addresses = len(TRADER_ADDRESSES)
-    for i, address in enumerate(TRADER_ADDRESSES):
-        # Update progress
-        if progress_bar is not None:
-            progress_bar.progress((i+1)/total_addresses)
-            progress_text.text(f"Processing address {i+1}/{total_addresses}")
-        
+    for address in TRADER_ADDRESSES:
         # Fetch all fills for this address
         fills = get_user_fills(address)
         
@@ -231,14 +216,6 @@ def analyze_trader_activity():
         
         # Add to all fills
         all_fills.extend(fills)
-        
-        # Add a slight delay to avoid rate limits
-        if i % 10 == 0 and i > 0:
-            time.sleep(1)
-    
-    # Clear progress indicator
-    if progress_text is not None:
-        progress_text.empty()
     
     # Step 3: Filter only fills from the last 24 hours
     last_24h_cutoff = cutoff_timestamps['24h']
