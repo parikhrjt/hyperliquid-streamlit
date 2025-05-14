@@ -6,6 +6,9 @@ import json
 import os
 from datetime import datetime
 
+# Import our adapter first
+from streamlit_adapter import HTML, display
+
 # Page configuration
 st.set_page_config(page_title="Hyperliquid Trader Analysis", layout="wide")
 st.title("Hyperliquid Trader Analysis")
