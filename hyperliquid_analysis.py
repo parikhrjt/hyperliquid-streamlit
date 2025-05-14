@@ -19,6 +19,181 @@ def display(content):
     else:
         st.write(content)
 
+# Define trader addresses
+# We'll define this globally so it can be updated from app.py
+TRADER_ADDRESSES = ["0xac50a255e330c388f44b9d01259d6b153a9f0ed9"]  # Default address
+
+# Define fallback function to get addresses from file if global variable doesn't work
+def get_trader_addresses():
+    # First try to use the global TRADER_ADDRESSES
+    if TRADER_ADDRESSES and len(TRADER_ADDRESSES) > 0:
+        st.write(f"Using {len(TRADER_ADDRESSES)} trader addresses from module variable")
+        return TRADER_ADDRESSES
+    
+    # Then try to read from tt global variable
+    try:
+        addresses = tt["address"]
+        st.write(f"Successfully loaded {len(addresses)} trader addresses from tt variable")
+        return addresses
+    except:
+        pass
+    
+    # Then try to read from a file
+    try:
+        if os.path.exists("trader_addresses.txt"):
+            with open("trader_addresses.txt", "r") as f:
+                addresses = [line.strip() for line in f if line.strip()]
+            st.write(f"Loaded {len(addresses)} trader addresses from file")
+            return addresses
+        elif os.path.exists("addresses.txt"):
+            with open("addresses.txt", "r") as f:
+                addresses = [line.strip() for line in f if line.strip()]
+            st.write(f"Loaded {len(addresses)} trader addresses from addresses.txt")
+            return addresses
+    except Exception as e:
+        st.error(f"Error reading addresses from file: {e}")
+    
+    # Fallback to default address
+    st.write(f"Using default test address: {TRADER_ADDRESSES[0]}")
+    return TRADER_ADDRESSES
+
+# Fallback prices if needed
+DEFAULT_PRICES = {
+    "BTC": 83100.00,
+    "ETH": 4450.00,
+    "SOL": 267.60,
+    "AVAX": 114.85,
+    "HYPE": 11.39,
+    "XRP": 0.52,
+    "HBAR": 0.09,
+    "FARTCOIN": 1.20,
+    "MELANIA": 0.39,
+    "@107": 0.09
+}
+
+def save_to_file(data, filename):
+    """Save data to a JSON file"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{filename}_{timestamp}.json"
+    
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    st.write(f"Data saved to {filename}")
+    return filename
+
+def get_price_data():
+    """Fetch current prices from Hyperliquid API"""
+    url = "https://api.hyperliquid.xyz/info"
+    payload = {"type": "metaAndAssetCtxs"}
+    
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Check if the response has the expected structure
+            if not isinstance(data, list) or len(data) < 2:
+                st.warning("Unexpected response structure from metaAndAssetCtxs")
+                return {}, {}
+            
+            # Extract universe (metadata) and asset contexts (prices)
+            meta = data[0]
+            asset_ctxs = data[1]
+            
+            # Create price mappings
+            current_prices = {}
+            prev_day_prices = {}
+            
+            # Get list of coin names from universe
+            coin_names = [coin['name'] for coin in meta['universe']]
+            
+            # Extract prices from asset contexts
+            for i, ctx in enumerate(asset_ctxs):
+                if i < len(coin_names):
+                    coin_name = coin_names[i]
+                    
+                    # Get current price in priority order: midPx, markPx, oraclePx
+                    current_price = None
+                    if 'midPx' in ctx and ctx['midPx'] is not None:
+                        try:
+                            current_price = float(ctx['midPx'])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    if current_price is None and 'markPx' in ctx and ctx['markPx'] is not None:
+                        try:
+                            current_price = float(ctx['markPx'])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    if current_price is None and 'oraclePx' in ctx and ctx['oraclePx'] is not None:
+                        try:
+                            current_price = float(ctx['oraclePx'])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Store current price if valid
+                    if current_price is not None:
+                        current_prices[coin_name] = current_price
+                    
+                    # Get previous day price
+                    prev_price = None
+                    if 'prevDayPx' in ctx and ctx['prevDayPx'] is not None:
+                        try:
+                            prev_price = float(ctx['prevDayPx'])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Store previous day price if valid
+                    if prev_price is not None:
+                        prev_day_prices[coin_name] = prev_price
+            
+            st.write(f"Fetched current prices for {len(current_prices)} coins")
+            return current_prices, prev_day_prices
+        else:
+            st.error(f"Error fetching market data: Status code {response.status_code}")
+            return {}, {}
+    except Exception as e:
+        st.error(f"Exception when fetching market data: {e}")
+        return {}, {}
+
+def get_user_fills(address):
+    """Fetch fills data for a specific address"""
+    url = "https://api.hyperliquid.xyz/info"
+    
+    payload = {
+        "type": "userFills",
+        "user": address,
+        "aggregateByTime": True
+    }
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            st.writeimport pandas as pd
+import numpy as np
+import requests
+import json
+import time
+import os
+from datetime import datetime, timedelta
+import streamlit as st
+
+# Define class for compatibility with IPython.display
+class HTML:
+    def __init__(self, content):
+        self.content = content
+
+# Define display function for compatibility with IPython.display
+def display(content):
+    if isinstance(content, HTML):
+        st.markdown(content.content, unsafe_allow_html=True)
+    else:
+        st.write(content)
+
 # Define the trader addresses
 try:
     # Try to access tt["address"] 
