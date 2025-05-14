@@ -15,11 +15,11 @@ if csv_files:
     selected_csv = st.sidebar.selectbox("Select trader addresses file", csv_files)
     try:
         df = pd.read_csv(selected_csv)
-        st.sidebar.success(f"Found {len(df)} addresses in file")
+        st.sidebar.write(f"Found {len(df)} addresses in file")
         
         if 'address' in df.columns:
             addresses = df['address'].tolist()
-            st.sidebar.success(f"Using {len(addresses)} addresses")
+            st.sidebar.write(f"Using {len(addresses)} addresses")
         else:
             st.sidebar.error("CSV doesn't have 'address' column")
             addresses = []
@@ -48,26 +48,14 @@ tt = {"address": addresses}
 # Create data directory
 os.makedirs("hyperliquid_data", exist_ok=True)
 
-# Add imports for IPython display
-sys.modules['IPython'] = type('', (), {})()
-sys.modules['IPython.display'] = type('', (), {})()
-sys.modules['IPython.display'].HTML = lambda x: x
-sys.modules['IPython.display'].display = lambda x: None
-
 # Import hyperliquid_analysis.py
 try:
-    # Import just to verify the file exists
+    # Simplified import approach
     import hyperliquid_analysis
-    
-    # Replace IPython display with our adapter
-    sys.modules['IPython.display'].HTML = lambda x: st.markdown(x, unsafe_allow_html=True)
-    sys.modules['IPython.display'].display = lambda x: st.write(x)
-    
-    st.sidebar.success("Hyperliquid analysis code loaded successfully")
+    st.sidebar.success("Analysis code loaded successfully")
     analysis_available = True
 except Exception as e:
     st.sidebar.error(f"Error loading analysis code: {e}")
-    st.error(f"Cannot load analysis code: {e}")
     analysis_available = False
 
 # Run button
@@ -78,28 +66,21 @@ if st.button("Run Analysis"):
         st.error("No addresses available for analysis")
     else:
         start_time = time.time()
-        progress_bar = st.progress(0)
-        status = st.empty()
-        
-        status.write("Starting analysis...")
         
         try:
             # Just run the analysis directly
+            st.write("Running analysis... this may take a while")
             result_df = hyperliquid_analysis.analyze_trader_activity()
             
             # Display the results
             if result_df is not None and not result_df.empty:
-                display_df = hyperliquid_analysis.format_for_display(result_df)
-                
-                st.subheader("Analysis Results")
-                st.write(f"Found {len(display_df)} assets with trading activity")
-                st.write(f"Time to complete: {time.time() - start_time:.1f} seconds")
+                st.write(f"Found {len(result_df)} assets with trading activity")
                 
                 # Show the data
-                st.dataframe(display_df)
+                st.dataframe(result_df)
                 
                 # Add download button
-                csv = display_df.to_csv(index=False).encode('utf-8')
+                csv = result_df.to_csv(index=False).encode('utf-8')
                 st.download_button("Download CSV", csv, "hyperliquid_analysis.csv", "text/csv")
                 
                 # Success message
