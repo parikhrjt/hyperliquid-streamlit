@@ -5,7 +5,7 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
-import random
+import concurrent.futures
 
 # Import our adapter for IPython display
 try:
@@ -28,20 +28,6 @@ def get_trader_addresses():
         print(f"Using test address: {addresses[0]}")
         return addresses
 
-# Fallback prices if needed
-DEFAULT_PRICES = {
-    "BTC": 83100.00,
-    "ETH": 4450.00,
-    "SOL": 267.60,
-    "AVAX": 114.85,
-    "HYPE": 11.39,
-    "XRP": 0.52,
-    "HBAR": 0.09,
-    "FARTCOIN": 1.20,
-    "MELANIA": 0.39,
-    "@107": 0.09
-}
-
 def save_to_file(data, filename):
     """Save data to a JSON file"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -58,76 +44,84 @@ def get_price_data():
     url = "https://api.hyperliquid.xyz/info"
     payload = {"type": "metaAndAssetCtxs"}
     
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Check if the response has the expected structure
-            if not isinstance(data, list) or len(data) < 2:
-                print("Unexpected response structure from metaAndAssetCtxs")
-                return {}, {}
-            
-            # Extract universe (metadata) and asset contexts (prices)
-            meta = data[0]
-            asset_ctxs = data[1]
-            
-            # Create price mappings
-            current_prices = {}
-            prev_day_prices = {}
-            
-            # Get list of coin names from universe
-            coin_names = [coin['name'] for coin in meta['universe']]
-            
-            # Extract prices from asset contexts
-            for i, ctx in enumerate(asset_ctxs):
-                if i < len(coin_names):
-                    coin_name = coin_names[i]
-                    
-                    # Get current price in priority order: midPx, markPx, oraclePx
-                    current_price = None
-                    if 'midPx' in ctx and ctx['midPx'] is not None:
-                        try:
-                            current_price = float(ctx['midPx'])
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    if current_price is None and 'markPx' in ctx and ctx['markPx'] is not None:
-                        try:
-                            current_price = float(ctx['markPx'])
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    if current_price is None and 'oraclePx' in ctx and ctx['oraclePx'] is not None:
-                        try:
-                            current_price = float(ctx['oraclePx'])
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    # Store current price if valid
-                    if current_price is not None:
-                        current_prices[coin_name] = current_price
-                    
-                    # Get previous day price
-                    prev_price = None
-                    if 'prevDayPx' in ctx and ctx['prevDayPx'] is not None:
-                        try:
-                            prev_price = float(ctx['prevDayPx'])
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    # Store previous day price if valid
-                    if prev_price is not None:
-                        prev_day_prices[coin_name] = prev_price
-            
-            print(f"Fetched current prices for {len(current_prices)} coins")
-            return current_prices, prev_day_prices
-        else:
-            print(f"Error fetching market data: Status code {response.status_code}")
-            return {}, {}
-    except Exception as e:
-        print(f"Exception when fetching market data: {e}")
-        return {}, {}
+    # Add retry logic
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, json=payload, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Check if the response has the expected structure
+                if not isinstance(data, list) or len(data) < 2:
+                    print("Unexpected response structure from metaAndAssetCtxs")
+                    return {}, {}
+                
+                # Extract universe (metadata) and asset contexts (prices)
+                meta = data[0]
+                asset_ctxs = data[1]
+                
+                # Create price mappings
+                current_prices = {}
+                prev_day_prices = {}
+                
+                # Get list of coin names from universe
+                coin_names = [coin['name'] for coin in meta['universe']]
+                
+                # Extract prices from asset contexts
+                for i, ctx in enumerate(asset_ctxs):
+                    if i < len(coin_names):
+                        coin_name = coin_names[i]
+                        
+                        # Get current price in priority order: midPx, markPx, oraclePx
+                        current_price = None
+                        if 'midPx' in ctx and ctx['midPx'] is not None:
+                            try:
+                                current_price = float(ctx['midPx'])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if current_price is None and 'markPx' in ctx and ctx['markPx'] is not None:
+                            try:
+                                current_price = float(ctx['markPx'])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if current_price is None and 'oraclePx' in ctx and ctx['oraclePx'] is not None:
+                            try:
+                                current_price = float(ctx['oraclePx'])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Store current price if valid
+                        if current_price is not None:
+                            current_prices[coin_name] = current_price
+                        
+                        # Get previous day price
+                        prev_price = None
+                        if 'prevDayPx' in ctx and ctx['prevDayPx'] is not None:
+                            try:
+                                prev_price = float(ctx['prevDayPx'])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Store previous day price if valid
+                        if prev_price is not None:
+                            prev_day_prices[coin_name] = prev_price
+                
+                print(f"Fetched current prices for {len(current_prices)} coins")
+                return current_prices, prev_day_prices
+            else:
+                print(f"Error fetching market data: Status code {response.status_code}. Attempt {attempt+1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(2)  # Wait before retrying
+        except Exception as e:
+            print(f"Exception when fetching market data: {e}. Attempt {attempt+1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(2)  # Wait before retrying
+    
+    print("All attempts to fetch market data failed.")
+    return {}, {}
 
 def get_user_fills(address):
     """Fetch fills data for a specific address"""
@@ -140,18 +134,56 @@ def get_user_fills(address):
     }
     headers = {"Content-Type": "application/json"}
     
-    try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            data = response.json()
-            print(f"Fetched {len(data)} fills for {address}")
-            return data
-        else:
-            print(f"Error fetching fills for {address}: Status code {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"Exception when fetching fills for {address}: {e}")
-        return []
+    # Add retry logic
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
+            if response.status_code == 200:
+                data = response.json()
+                print(f"Fetched {len(data)} fills for {address}")
+                return data
+            else:
+                print(f"Error fetching fills for {address}: Status code {response.status_code}. Attempt {attempt+1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(1)  # Wait before retrying
+        except Exception as e:
+            print(f"Exception when fetching fills for {address}: {e}. Attempt {attempt+1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(1)  # Wait before retrying
+    
+    print(f"All attempts to fetch fills for {address} failed. Returning empty list.")
+    return []
+
+def fetch_user_fills_batch(addresses, batch_size=10):
+    """Fetch fills for a batch of addresses using parallel requests"""
+    all_fills = []
+    total_addresses = len(addresses)
+    print(f"Processing {total_addresses} addresses in batches of {batch_size}")
+    
+    # Process addresses in batches
+    for i in range(0, total_addresses, batch_size):
+        batch = addresses[i:i+batch_size]
+        print(f"Processing batch {i//batch_size + 1}/{(total_addresses+batch_size-1)//batch_size} ({len(batch)} addresses)")
+        
+        # Use multithreading to speed up API calls
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            batch_results = list(executor.map(get_user_fills, batch))
+        
+        # Process results
+        for j, fills in enumerate(batch_results):
+            address = batch[j]
+            for fill in fills:
+                fill['trader_address'] = address
+            all_fills.extend(fills)
+        
+        # Add a delay between batches to avoid rate limiting
+        if i + batch_size < total_addresses:
+            print(f"Pausing for 1 second between batches...")
+            time.sleep(1)
+    
+    print(f"Finished processing all {total_addresses} addresses. Total fills: {len(all_fills)}")
+    return all_fills
 
 def save_fills_to_csv(fills, filename):
     """Save fills data to CSV"""
@@ -208,6 +240,9 @@ def analyze_trader_activity():
     print("Fetching current prices...")
     current_prices, prev_day_prices = get_price_data()
     
+    if not current_prices:
+        raise Exception("Failed to fetch current prices, cannot continue analysis")
+    
     # Calculate price changes
     price_changes = {}
     for coin in current_prices:
@@ -216,26 +251,12 @@ def analyze_trader_activity():
             if change is not None:
                 price_changes[coin] = change
     
-    # Step 2: Fetch and process fills for each address
-    all_fills = []
+    # Step 2: Fetch and process fills for each address in batches
+    print(f"Fetching fills for {len(TRADER_ADDRESSES)} addresses...")
+    all_fills = fetch_user_fills_batch(TRADER_ADDRESSES, batch_size=20)
     
-    total_addresses = len(TRADER_ADDRESSES)
-    for i, address in enumerate(TRADER_ADDRESSES):
-        print(f"Processing address {i+1}/{total_addresses}: {address[:10]}...")
-        
-        # Fetch all fills for this address
-        fills = get_user_fills(address)
-        
-        # Add trader address to each fill
-        for fill in fills:
-            fill['trader_address'] = address
-        
-        # Add to all fills
-        all_fills.extend(fills)
-        
-        # Add a slight delay to avoid rate limits
-        if i % 10 == 0 and i > 0:
-            time.sleep(1)
+    if not all_fills:
+        raise Exception("No trade fills found for any addresses, cannot continue analysis")
     
     # Step 3: Filter only fills from the last 24 hours
     last_24h_cutoff = cutoff_timestamps['24h']
@@ -336,12 +357,9 @@ def analyze_trader_activity():
         # Get current price for this coin
         if coin in current_prices:
             current_price = current_prices[coin]
-        elif coin in DEFAULT_PRICES:
-            current_price = DEFAULT_PRICES[coin]
         else:
-            # Use $1 as fallback price
-            current_price = 1.0
-            print(f"Warning: No price found for {coin}, using $1.00")
+            print(f"Warning: No price found for {coin}")
+            continue
         
         # Calculate total volume in USD
         volume_usd = {}
@@ -683,9 +701,16 @@ def run_analysis():
         # Try to create data directory, but continue if it fails
         data_dir = "hyperliquid_data"
         os.makedirs(data_dir, exist_ok=True)
-        print(f"Created data directory: {data_dir}")
+        
+        # Change to data directory if it exists
+        if os.path.exists(data_dir):
+            os.chdir(data_dir)
+            print(f"Saving data to {os.path.abspath(data_dir)}")
+        else:
+            print("Working in current directory")
     except Exception as e:
-        print(f"Error creating data directory: {e}")
+        print(f"Issue with directory: {e}")
+        print("Working in current directory")
     
     # Analyze trader activity
     result_df = analyze_trader_activity()
@@ -709,6 +734,6 @@ def run_analysis():
         print("No data available to display")
         return None
 
-# Execute the analysis
+# Execute the analysis when run directly
 if __name__ == "__main__":
     run_analysis()
