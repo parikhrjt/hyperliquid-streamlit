@@ -5,18 +5,29 @@ import json
 import time
 import os
 from datetime import datetime, timedelta
-from IPython.display import HTML, display
-import random
+import streamlit as st
+
+# Define class for compatibility with IPython.display
+class HTML:
+    def __init__(self, content):
+        self.content = content
+
+# Define display function for compatibility with IPython.display
+def display(content):
+    if isinstance(content, HTML):
+        st.markdown(content.content, unsafe_allow_html=True)
+    else:
+        st.write(content)
 
 # Define the trader addresses
 try:
     # Try to access tt["address"] 
     TRADER_ADDRESSES = tt["address"]
-    print(f"Successfully loaded {len(TRADER_ADDRESSES)} trader addresses")
+    st.write(f"Successfully loaded {len(TRADER_ADDRESSES)} trader addresses")
 except:
     # If tt is not defined, use a placeholder address for testing
     TRADER_ADDRESSES = ["0xac50a255e330c388f44b9d01259d6b153a9f0ed9"]
-    print(f"Using test address: {TRADER_ADDRESSES[0]}")
+    st.write(f"Using test address: {TRADER_ADDRESSES[0]}")
 
 # Fallback prices if needed
 DEFAULT_PRICES = {
@@ -40,7 +51,7 @@ def save_to_file(data, filename):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
     
-    print(f"Data saved to {filename}")
+    st.write(f"Data saved to {filename}")
     return filename
 
 def get_price_data():
@@ -55,7 +66,7 @@ def get_price_data():
             
             # Check if the response has the expected structure
             if not isinstance(data, list) or len(data) < 2:
-                print("Unexpected response structure from metaAndAssetCtxs")
+                st.warning("Unexpected response structure from metaAndAssetCtxs")
                 return {}, {}
             
             # Extract universe (metadata) and asset contexts (prices)
@@ -110,13 +121,13 @@ def get_price_data():
                     if prev_price is not None:
                         prev_day_prices[coin_name] = prev_price
             
-            print(f"Fetched current prices for {len(current_prices)} coins")
+            st.write(f"Fetched current prices for {len(current_prices)} coins")
             return current_prices, prev_day_prices
         else:
-            print(f"Error fetching market data: Status code {response.status_code}")
+            st.error(f"Error fetching market data: Status code {response.status_code}")
             return {}, {}
     except Exception as e:
-        print(f"Exception when fetching market data: {e}")
+        st.error(f"Exception when fetching market data: {e}")
         return {}, {}
 
 def get_user_fills(address):
@@ -134,19 +145,19 @@ def get_user_fills(address):
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             data = response.json()
-            print(f"Fetched {len(data)} fills for {address}")
+            st.write(f"Fetched {len(data)} fills for {address}")
             return data
         else:
-            print(f"Error fetching fills for {address}: Status code {response.status_code}")
+            st.error(f"Error fetching fills for {address}: Status code {response.status_code}")
             return []
     except Exception as e:
-        print(f"Exception when fetching fills for {address}: {e}")
+        st.error(f"Exception when fetching fills for {address}: {e}")
         return []
 
 def save_fills_to_csv(fills, filename):
     """Save fills data to CSV"""
     if not fills:
-        print("No fills data to save")
+        st.warning("No fills data to save")
         return None
     
     # Convert to DataFrame
@@ -161,7 +172,7 @@ def save_fills_to_csv(fills, filename):
     csv_filename = f"{filename}_{timestamp}.csv"
     df.to_csv(csv_filename, index=False)
     
-    print(f"Saved {len(df)} fills to CSV: {csv_filename}")
+    st.write(f"Saved {len(df)} fills to CSV: {csv_filename}")
     return csv_filename
 
 def calculate_price_change(current, previous):
@@ -189,10 +200,10 @@ def analyze_trader_activity():
         for window, dt in cutoff_times.items()
     }
     
-    print(f"Using cutoff timestamp for 24h: {cutoff_timestamps['24h']} ({cutoff_times['24h'].strftime('%Y-%m-%d %H:%M:%S')})")
+    st.write(f"Using cutoff timestamp for 24h: {cutoff_timestamps['24h']} ({cutoff_times['24h'].strftime('%Y-%m-%d %H:%M:%S')})")
     
     # Step 1: Fetch current prices
-    print("Fetching current prices...")
+    st.write("Fetching current prices...")
     current_prices, prev_day_prices = get_price_data()
     
     # Calculate price changes
@@ -206,7 +217,12 @@ def analyze_trader_activity():
     # Step 2: Fetch and process fills for each address
     all_fills = []
     
-    for address in TRADER_ADDRESSES:
+    progress_bar = st.progress(0)
+    for i, address in enumerate(TRADER_ADDRESSES):
+        # Update progress
+        progress = (i + 1) / len(TRADER_ADDRESSES)
+        progress_bar.progress(progress)
+        
         # Fetch all fills for this address
         fills = get_user_fills(address)
         
@@ -217,12 +233,15 @@ def analyze_trader_activity():
         # Add to all fills
         all_fills.extend(fills)
     
+    # Reset progress bar
+    progress_bar.empty()
+    
     # Step 3: Filter only fills from the last 24 hours
     last_24h_cutoff = cutoff_timestamps['24h']
     fills_24h = [f for f in all_fills if int(f.get('time', 0)) >= last_24h_cutoff]
     
-    print(f"Total fills: {len(all_fills)}")
-    print(f"Fills from last 24 hours: {len(fills_24h)}")
+    st.write(f"Total fills: {len(all_fills)}")
+    st.write(f"Fills from last 24 hours: {len(fills_24h)}")
     
     # Save all 24h fills to CSV file for investigation
     fills_csv = save_fills_to_csv(fills_24h, "fills_last_24h")
@@ -319,7 +338,7 @@ def analyze_trader_activity():
         else:
             # Use $1 as fallback price
             current_price = 1.0
-            print(f"Warning: No price found for {coin}, using $1.00")
+            st.warning(f"No price found for {coin}, using $1.00")
         
         # Calculate total volume in USD
         volume_usd = {}
@@ -387,7 +406,7 @@ def analyze_trader_activity():
             }
             
             # Debug print entry prices for this coin
-            print(f"Entry prices for {coin}: Total=${entry_prices['total']}, Long=${entry_prices['long']}, Short=${entry_prices['short']}")
+            st.write(f"Entry prices for {coin}: Total=${entry_prices['total']}, Long=${entry_prices['long']}, Short=${entry_prices['short']}")
         else:
             entry_prices = {'total': None, 'long': None, 'short': None}
         
@@ -438,7 +457,7 @@ def analyze_trader_activity():
     df = pd.DataFrame(summary_data)
     
     # Debug column names
-    print("Summary data columns:", df.columns.tolist())
+    st.write("Summary data columns:", df.columns.tolist())
     
     # Sort by 24h volume (descending)
     if '24h Volume' in df.columns and not df.empty:
@@ -509,7 +528,7 @@ def format_for_display(df):
     
     # Only attempt to format entry prices if the columns exist
     if all(col in df.columns for col in ['Open Total Avg Entry', 'Open Long Avg Entry', 'Open Short Avg Entry']):
-        print("Entry price columns found, formatting...")
+        st.write("Entry price columns found, formatting...")
         
         # Safe getter function to handle missing values
         def safe_get(row, key):
@@ -524,7 +543,7 @@ def format_for_display(df):
             axis=1
         )
     else:
-        print("Entry price columns not found, using placeholder")
+        st.write("Entry price columns not found, using placeholder")
         formatted_df['Open Trades Entry'] = "N/A"
     
     # Format time windows
@@ -620,7 +639,7 @@ def generate_styled_table(df):
 def save_formatted_table(df, filename="hyperliquid_analysis"):
     """Save the formatted table as HTML"""
     if df is None or df.empty:
-        print("No data to save")
+        st.warning("No data to save")
         return None
     
     # Generate HTML table
@@ -649,21 +668,21 @@ def save_formatted_table(df, filename="hyperliquid_analysis"):
     with open(html_filename, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
-    print(f"HTML table saved to {html_filename}")
+    st.write(f"HTML table saved to {html_filename}")
     return html_filename
 
 def run_analysis():
     """Main function to run the analysis"""
-    print("Analyzing Hyperliquid trader activity...")
+    st.write("Analyzing Hyperliquid trader activity...")
     
     try:
         # Try to create data directory, but continue if it fails
         data_dir = "hyperliquid_data"
         os.makedirs(data_dir, exist_ok=True)
         os.chdir(data_dir)
-        print(f"Saving data to {os.path.abspath(data_dir)}")
+        st.write(f"Saving data to {os.path.abspath(data_dir)}")
     except:
-        print("Working in current directory")
+        st.write("Working in current directory")
     
     # Analyze trader activity
     result_df = analyze_trader_activity()
@@ -672,8 +691,8 @@ def run_analysis():
         # Format for display
         display_df = format_for_display(result_df)
         
-        print("\nHyperliquid Top Traders Analysis")
-        print("===============================")
+        st.write("\nHyperliquid Top Traders Analysis")
+        st.write("===============================")
         
         # Generate and display styled table
         styled_table = generate_styled_table(display_df)
@@ -684,7 +703,7 @@ def run_analysis():
         
         return display_df
     else:
-        print("No data available to display")
+        st.warning("No data available to display")
         return None
 
 # Execute the analysis
