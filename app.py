@@ -1,8 +1,24 @@
 import streamlit as st
 import pandas as pd
 import os
-import time
 import sys
+
+# Create streamlit_adapter.py if it doesn't exist
+if not os.path.exists("streamlit_adapter.py"):
+    with open("streamlit_adapter.py", "w") as f:
+        f.write("""
+import streamlit as st
+
+class HTML:
+    def __init__(self, content):
+        self.content = content
+
+def display(content):
+    if hasattr(content, 'content'):
+        st.markdown(content.content, unsafe_allow_html=True)
+    else:
+        st.write(content)
+""")
 
 # Configure page
 st.set_page_config(page_title="Hyperliquid Trader Analysis", layout="wide")
@@ -12,81 +28,51 @@ st.title("Hyperliquid Trader Analysis")
 csv_files = [f for f in os.listdir() if f.endswith('.csv')]
 
 if csv_files:
-    selected_csv = st.sidebar.selectbox("Select trader addresses file", csv_files)
+    selected_csv = st.selectbox("Select trader addresses file", csv_files)
     try:
         df = pd.read_csv(selected_csv)
-        st.sidebar.write(f"Found {len(df)} addresses in file")
+        st.success(f"Found {len(df)} addresses in file")
         
         if 'address' in df.columns:
             addresses = df['address'].tolist()
-            st.sidebar.write(f"Using {len(addresses)} addresses")
-        else:
-            st.sidebar.error("CSV doesn't have 'address' column")
-            addresses = []
-    except Exception as e:
-        st.sidebar.error(f"Error loading CSV: {e}")
-        addresses = []
-else:
-    st.sidebar.warning("No CSV files found")
-    default_address = "0xac50a255e330c388f44b9d01259d6b153a9f0ed9"
-    address_input = st.sidebar.text_area("Enter trader addresses (one per line)", default_address)
-    addresses = [addr.strip() for addr in address_input.split("\n") if addr.strip()]
-
-# Display addresses
-st.write(f"Ready to analyze {len(addresses)} trader addresses")
-if addresses:
-    st.write("Sample addresses:")
-    for i, addr in enumerate(addresses[:5]):
-        st.write(f"{i+1}. {addr}")
-    if len(addresses) > 5:
-        st.write(f"... and {len(addresses)-5} more")
-
-# Create global variable for hyperliquid_analysis.py
-global tt
-tt = {"address": addresses}
-
-# Create data directory
-os.makedirs("hyperliquid_data", exist_ok=True)
-
-# Import hyperliquid_analysis.py
-try:
-    # Simplified import approach
-    import hyperliquid_analysis
-    st.sidebar.success("Analysis code loaded successfully")
-    analysis_available = True
-except Exception as e:
-    st.sidebar.error(f"Error loading analysis code: {e}")
-    analysis_available = False
-
-# Run button
-if st.button("Run Analysis"):
-    if not analysis_available:
-        st.error("Analysis code could not be loaded")
-    elif not addresses:
-        st.error("No addresses available for analysis")
-    else:
-        start_time = time.time()
-        
-        try:
-            # Just run the analysis directly
-            st.write("Running analysis... this may take a while")
-            result_df = hyperliquid_analysis.analyze_trader_activity()
+            st.success(f"Using {len(addresses)} addresses")
             
-            # Display the results
-            if result_df is not None and not result_df.empty:
-                st.write(f"Found {len(result_df)} assets with trading activity")
+            # Set global variable for hyperliquid_analysis.py
+            global tt
+            tt = {"address": addresses}
+            
+            # Create data directory
+            os.makedirs("hyperliquid_data", exist_ok=True)
+            
+            # Create a button to run the analysis
+            if st.button("Run Analysis"):
+                st.write("Running analysis... This may take several minutes")
                 
-                # Show the data
-                st.dataframe(result_df)
-                
-                # Add download button
-                csv = result_df.to_csv(index=False).encode('utf-8')
-                st.download_button("Download CSV", csv, "hyperliquid_analysis.csv", "text/csv")
-                
-                # Success message
-                st.success("Analysis completed successfully!")
-            else:
-                st.error("Analysis completed but no data was returned")
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-            st.exception(e)
+                try:
+                    # Import hyperliquid_analysis.py
+                    import hyperliquid_analysis
+                    
+                    # Run the analysis
+                    result_df = hyperliquid_analysis.analyze_trader_activity()
+                    
+                    # Check if we got results
+                    if result_df is not None and not result_df.empty:
+                        st.success(f"Analysis found {len(result_df)} coins with trading activity")
+                        
+                        # Display the dataframe
+                        st.dataframe(result_df)
+                        
+                        # Download button
+                        csv = result_df.to_csv(index=False).encode('utf-8')
+                        st.download_button("Download CSV", csv, "hyperliquid_analysis.csv", "text/csv")
+                    else:
+                        st.error("No data was found in the analysis results")
+                except Exception as e:
+                    st.error(f"An error occurred during analysis: {e}")
+                    st.exception(e)  # Show detailed error
+        else:
+            st.error("CSV file doesn't have an 'address' column. Please use a different file.")
+    except Exception as e:
+        st.error(f"Error loading CSV: {e}")
+else:
+    st.error("No CSV files found in the repository. Please add a CSV file with trader addresses.")
