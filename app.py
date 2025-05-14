@@ -13,8 +13,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Define the tt variable correctly at the global scope
-tt = {"address": []}
+# Define global variable to store addresses
+addresses_global = []
 
 # Create adapter file first before anything else
 adapter_content = """
@@ -38,7 +38,22 @@ if not os.path.exists("streamlit_adapter.py"):
     st.sidebar.success("Created streamlit_adapter.py")
 
 # Now we can import it
-from streamlit_adapter import HTML, display
+sys.path.insert(0, os.path.abspath("."))
+try:
+    from streamlit_adapter import HTML, display
+except ImportError:
+    st.error("Failed to import streamlit_adapter. Creating a temporary adapter")
+    
+    # Define temporary classes if import failed
+    class HTML:
+        def __init__(self, content):
+            self.content = content
+
+    def display(content):
+        if hasattr(content, 'content'):
+            st.markdown(content.content, unsafe_allow_html=True)
+        else:
+            st.write(content)
 
 # Also inject IPython module for compatibility
 sys.modules['IPython'] = type('', (), {})()
@@ -73,6 +88,7 @@ input_method = st.radio(
     ["CSV in Directory", "Upload CSV", "Enter addresses manually", "Use sample addresses"]
 )
 
+# Initialize addresses
 addresses = []
 
 if input_method == "CSV in Directory":
@@ -178,9 +194,9 @@ if addresses:
             st.write(f"{i+1}. `{addr}`")
         if len(addresses) > 10:
             st.write(f"...and {len(addresses)-10} more")
-
-    # Update the global tt variable with the addresses
-    tt["address"] = addresses
+    
+    # Update the global addresses
+    addresses_global = addresses
     
     # Also create a file with addresses to make sure it's accessible
     with open("addresses.txt", "w") as f:
@@ -188,10 +204,10 @@ if addresses:
             f.write(addr + "\n")
     
     # Show what was set
-    st.write(f"Analysis will run on {len(tt['address'])} addresses")
+    st.write(f"Analysis will run on {len(addresses_global)} addresses")
     
-    # Debug - Show content of tt
-    st.sidebar.write(f"Debug: Global tt has {len(tt['address'])} addresses")
+    # Debug - Show content of addresses
+    st.sidebar.write(f"Debug: Using {len(addresses_global)} addresses")
 
     # Run analysis button
     if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
@@ -213,7 +229,7 @@ if addresses:
                 
                 progress_container.info(f"Set up {len(addresses)} addresses for analysis...")
                 
-                # Import hyperliquid_analysis here 
+                # Import hyperliquid_analysis here
                 import hyperliquid_analysis
                 
                 # Explicitly set addresses in the module
