@@ -16,6 +16,7 @@ st.set_page_config(
 # Define global variable to store addresses
 addresses_global = []
 
+
 # Create adapter file first before anything else
 adapter_content = """
 import streamlit as st
